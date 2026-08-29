@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Product metadata: pre-release values, bump to 1.0.0 for the public release. -->
+    <AssemblyName>Luajit-Decompiler-v2-GUI</AssemblyName>
+    <RootNamespace>LuajitDecompilerGui</RootNamespace>
+    <Product>LuaJIT Decompiler v2 GUI</Product>
+    <Title>LuaJIT Decompiler v2 GUI</Title>
+    <Description>Windows GUI for LuaJIT Decompiler v2 with recursive batch processing, bytecode detection, preview, logging, and cancellation.</Description>
+    <Authors>Luajit-Decompiler-v2-GUI contributors</Authors>
+    <Version>0.9.0</Version>
+    <FileVersion>0.9.0.0</FileVersion>
+    <AssemblyVersion>0.9.0.0</AssemblyVersion>
+    <InformationalVersion>0.9.0-pre-release</InformationalVersion>
+    <Copyright>Copyright © 2026 Luajit-Decompiler-v2-GUI contributors</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('..\third_party\luajit-decompiler-v2.exe')">
+    <None Include="..\third_party\luajit-decompiler-v2.exe">
+      <Link>third_party\luajit-decompiler-v2.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,18 @@
+﻿# .NET build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Publish output
+publish/
+
+# Temporary files
+*.tmp
+
+# OS files
+Thumbs.db
+.DS_Store
