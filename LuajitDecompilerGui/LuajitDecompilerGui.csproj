@@ -6,24 +6,52 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
 
-    <!-- Product metadata: pre-release values, bump to 1.0.0 for the public release. -->
     <AssemblyName>Luajit-Decompiler-v2-GUI</AssemblyName>
     <RootNamespace>LuajitDecompilerGui</RootNamespace>
     <Product>LuaJIT Decompiler v2 GUI</Product>
     <Title>LuaJIT Decompiler v2 GUI</Title>
-    <Description>Windows GUI for LuaJIT Decompiler v2 with recursive batch processing, bytecode detection, preview, logging, and cancellation.</Description>
-    <Authors>Luajit-Decompiler-v2-GUI contributors</Authors>
-    <Version>0.9.0</Version>
-    <FileVersion>0.9.0.0</FileVersion>
-    <AssemblyVersion>0.9.0.0</AssemblyVersion>
-    <InformationalVersion>0.9.0-pre-release</InformationalVersion>
-    <Copyright>Copyright © 2026 Luajit-Decompiler-v2-GUI contributors</Copyright>
+    <Description>Windows GUI for LuaJIT Decompiler v2 with recursive batch processing, LuaJIT 2.0/2.1 detection, preview, logging, cancellation, and native option support.</Description>
+    <Authors>Mohammad HS</Authors>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <Copyright>Copyright © 2026 Mohammad HS</Copyright>
+    <RepositoryUrl>https://github.com/mhsharif7/Luajit-Decompiler-v2-GUI</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('..\third_party\luajit-decompiler-v2.exe')">
     <None Include="..\third_party\luajit-decompiler-v2.exe">
       <Link>third_party\luajit-decompiler-v2.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('..\third_party\LICENSE-luajit-decompiler-v2.txt')">
+    <None Include="..\third_party\LICENSE-luajit-decompiler-v2.txt">
+      <Link>third_party\LICENSE-luajit-decompiler-v2.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE.md" Condition="Exists('..\LICENSE.md')">
+      <Link>LICENSE.md</Link>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\THIRD_PARTY_NOTICES.md" Condition="Exists('..\THIRD_PARTY_NOTICES.md')">
+      <Link>THIRD_PARTY_NOTICES.md</Link>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\README.md" Condition="Exists('..\README.md')">
+      <Link>README.md</Link>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\CHANGELOG.md" Condition="Exists('..\CHANGELOG.md')">
+      <Link>CHANGELOG.md</Link>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>

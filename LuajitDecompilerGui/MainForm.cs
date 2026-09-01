@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using LuajitDecompilerGui.Models;
@@ -24,6 +25,7 @@ public sealed class MainForm : Form
     private readonly OutputPathService _outputPathService = new();
     private readonly DecompilerService _decompiler;
     private readonly BatchDecompilerService _batchDecompiler;
+    private readonly AppSettingsService _settingsService = new();
     private readonly BindingList<InputFile> _files = [];
 
     private CancellationTokenSource? _batchCancellation;
@@ -53,6 +55,7 @@ public sealed class MainForm : Form
     private readonly Button btnRemove;
     private readonly Button btnClear;
     private readonly Button btnBrowseOutput;
+    private readonly Button btnOpenOutput;
     private readonly Button btnDecompile;
     private readonly Button btnCancel;
 
@@ -69,6 +72,7 @@ public sealed class MainForm : Form
         btnRemove = CreateButton("Remove");
         btnClear = CreateButton("Clear");
         btnBrowseOutput = CreateButton("Browse");
+        btnOpenOutput = CreateButton("Open");
         btnDecompile = CreateButton("Decompile", primary: true);
         btnCancel = CreateButton("Cancel", danger: true);
         btnCancel.Enabled = false;
@@ -93,9 +97,15 @@ public sealed class MainForm : Form
         DragDrop += MainForm_DragDrop;
         dgvFiles.SelectionChanged += dgvFiles_SelectionChanged;
         dgvFiles.CellFormatting += dgvFiles_CellFormatting;
+        dgvFiles.CellDoubleClick += dgvFiles_CellDoubleClick;
+        dgvFiles.CellMouseDown += dgvFiles_CellMouseDown;
         btnDecompile.Click += btnDecompile_Click;
         btnCancel.Click += btnCancel_Click;
         _files.ListChanged += (_, _) => UpdateFileCount();
+
+        ConfigureFileContextMenu();
+        RestoreSettings();
+        FormClosing += MainForm_FormClosing;
 
         UpdateDecompilerStatus();
         UpdateVersionLabel();
@@ -133,7 +143,7 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
         Controls.Add(root);
 
@@ -200,6 +210,18 @@ public sealed class MainForm : Form
         lblVersion.ForeColor = TextSecondary;
         lblVersion.Margin = new Padding(14, 4, 0, 0);
 
+        var aboutLink = new LinkLabel
+        {
+            Text = "About",
+            AutoSize = true,
+            LinkColor = Accent,
+            ActiveLinkColor = AccentHover,
+            VisitedLinkColor = Accent,
+            Margin = new Padding(14, 4, 0, 0)
+        };
+        aboutLink.LinkClicked += (_, _) => new AboutForm().ShowDialog(this);
+
+        statusPanel.Controls.Add(aboutLink);
         statusPanel.Controls.Add(lblDecompiler);
         statusPanel.Controls.Add(lblVersion);
         header.Controls.Add(statusPanel, 1, 0);
@@ -256,14 +278,7 @@ public sealed class MainForm : Form
                 await AddPathsAsync([dlg.SelectedPath]);
         };
 
-        btnRemove.Click += (_, _) =>
-        {
-            foreach (DataGridViewRow row in dgvFiles.SelectedRows.Cast<DataGridViewRow>().ToList())
-            {
-                if (row.DataBoundItem is InputFile item)
-                    _files.Remove(item);
-            }
-        };
+        btnRemove.Click += (_, _) => RemoveSelectedFiles();
 
         btnClear.Click += (_, _) =>
         {
@@ -325,13 +340,14 @@ public sealed class MainForm : Form
         var outputRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 4,
+            ColumnCount = 5,
             RowCount = 1,
             Margin = Padding.Empty
         };
         outputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
         outputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         outputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
+        outputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 74));
         outputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
 
         var outputLabel = new Label
@@ -348,12 +364,14 @@ public sealed class MainForm : Form
         txtOutputFolder.BackColor = Color.White;
 
         btnBrowseOutput.Margin = new Padding(0, 2, 8, 4);
+        btnOpenOutput.Margin = new Padding(0, 2, 8, 4);
         chkPreserveDirectories.Margin = new Padding(4, 8, 0, 0);
 
         outputRow.Controls.Add(outputLabel, 0, 0);
         outputRow.Controls.Add(txtOutputFolder, 1, 0);
         outputRow.Controls.Add(btnBrowseOutput, 2, 0);
-        outputRow.Controls.Add(chkPreserveDirectories, 3, 0);
+        outputRow.Controls.Add(btnOpenOutput, 3, 0);
+        outputRow.Controls.Add(chkPreserveDirectories, 4, 0);
         layout.Controls.Add(outputRow, 0, 0);
 
         var optionsFlow = new FlowLayoutPanel
@@ -402,12 +420,15 @@ public sealed class MainForm : Form
             using var dlg = new FolderBrowserDialog
             {
                 Description = "Select the folder for decompiled Lua files",
-                UseDescriptionForTitle = true
+                UseDescriptionForTitle = true,
+                SelectedPath = Directory.Exists(txtOutputFolder.Text) ? txtOutputFolder.Text : string.Empty
             };
 
             if (dlg.ShowDialog(this) == DialogResult.OK)
                 txtOutputFolder.Text = dlg.SelectedPath;
         };
+
+        btnOpenOutput.Click += (_, _) => OpenOutputFolder();
 
         return card;
     }
@@ -420,60 +441,111 @@ public sealed class MainForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(10, 10, 10, 9),
-            BackColor = CardBackground
+            Padding = new Padding(10, 10, 10, 10),
+            BackColor = CardBackground,
+            Margin = Padding.Empty
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
 
+        layout.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Absolute, 210));
+
+        layout.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 100));
+
+        // Buttons
         var buttons = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Margin = Padding.Empty
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
         };
+
         btnDecompile.Width = 105;
         btnCancel.Width = 82;
+
         buttons.Controls.Add(btnDecompile);
         buttons.Controls.Add(btnCancel);
+
         layout.Controls.Add(buttons, 0, 0);
 
+        // Progress/status area
         var progressLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            ColumnCount = 2,
             RowCount = 2,
-            ColumnCount = 1,
-            Margin = new Padding(8, 0, 12, 0)
+            Margin = new Padding(8, 0, 0, 0),
+            Padding = Padding.Empty
         };
-        progressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
-        progressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
 
-        lblOperation.Font = new Font("Segoe UI Semibold", 9F);
+        progressLayout.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 70));
+
+        progressLayout.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 30));
+
+        progressLayout.RowStyles.Add(
+            new RowStyle(SizeType.Absolute, 25));
+
+        progressLayout.RowStyles.Add(
+            new RowStyle(SizeType.Percent, 100));
+
+        // Left status, e.g. Ready / Scanning / Decompiling
+        lblOperation.Font =
+            new Font("Segoe UI Semibold", 9F);
+
         lblOperation.ForeColor = TextPrimary;
+
+        lblOperation.AutoSize = false;
+        lblOperation.Dock = DockStyle.Fill;
+        lblOperation.TextAlign =
+            ContentAlignment.MiddleLeft;
+
         lblOperation.Margin = Padding.Empty;
 
+        // Right progress detail, e.g. 320 / 548
+        lblProgress.AutoSize = false;
+        lblProgress.Dock = DockStyle.Fill;
+        lblProgress.TextAlign =
+            ContentAlignment.MiddleRight;
+
+        lblProgress.ForeColor = TextSecondary;
+        lblProgress.Margin = Padding.Empty;
+
+        // Progress bar
         progressBar.Dock = DockStyle.Fill;
-        progressBar.Style = ProgressBarStyle.Continuous;
+        progressBar.Style =
+            ProgressBarStyle.Continuous;
+
         progressBar.Minimum = 0;
         progressBar.Maximum = 1;
         progressBar.Value = 0;
-        progressBar.Margin = Padding.Empty;
 
-        progressLayout.Controls.Add(lblOperation, 0, 0);
-        progressLayout.Controls.Add(progressBar, 0, 1);
-        layout.Controls.Add(progressLayout, 1, 0);
+        progressBar.Margin =
+            new Padding(0, 3, 0, 0);
 
-        lblProgress.AutoSize = false;
-        lblProgress.Dock = DockStyle.Fill;
-        lblProgress.TextAlign = ContentAlignment.MiddleRight;
-        lblProgress.ForeColor = TextSecondary;
-        lblProgress.Margin = new Padding(0, 3, 2, 0);
-        layout.Controls.Add(lblProgress, 2, 0);
+        progressLayout.Controls.Add(
+            lblOperation, 0, 0);
+
+        progressLayout.Controls.Add(
+            lblProgress, 1, 0);
+
+        progressLayout.Controls.Add(
+            progressBar, 0, 1);
+
+        // Progress bar spans both columns.
+        progressLayout.SetColumnSpan(
+            progressBar, 2);
+
+        layout.Controls.Add(
+            progressLayout, 1, 0);
 
         card.Controls.Add(layout);
+
         return card;
     }
 
@@ -914,28 +986,10 @@ public sealed class MainForm : Form
 
     private async void dgvFiles_SelectionChanged(object? sender, EventArgs e)
     {
-        if (dgvFiles.CurrentRow?.DataBoundItem is not InputFile file ||
-            file.Status != FileStatus.Success ||
-            string.IsNullOrWhiteSpace(file.OutputPath) ||
-            !File.Exists(file.OutputPath))
-        {
-            txtPreview.Clear();
-            return;
-        }
-
-        try
-        {
-            txtPreview.Text = await ReadPreviewAsync(file.OutputPath);
-        }
-        catch (Exception ex)
-        {
-            txtPreview.Text = $"Unable to preview file:\r\n\r\n{ex.Message}";
-        }
+        await PreviewCurrentFileAsync();
     }
 
-    private void dgvFiles_CellFormatting(
-        object? sender,
-        DataGridViewCellFormattingEventArgs e)
+    private void dgvFiles_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         if (e.RowIndex < 0 ||
             e.ColumnIndex < 0 ||
@@ -948,7 +1002,6 @@ public sealed class MainForm : Form
             return;
 
         DataGridViewCellStyle? cellStyle = e.CellStyle;
-
         if (cellStyle is null)
             return;
 
@@ -963,6 +1016,34 @@ public sealed class MainForm : Form
             FileStatus.Cancelled => Warning,
             _ => TextPrimary
         };
+    }
+
+    private void dgvFiles_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0)
+            return;
+
+        if (dgvFiles.Rows[e.RowIndex].DataBoundItem is InputFile item &&
+            item.Status == FileStatus.Success &&
+            !string.IsNullOrWhiteSpace(item.OutputPath) &&
+            File.Exists(item.OutputPath))
+        {
+            OpenPath(item.OutputPath);
+        }
+    }
+
+    private void dgvFiles_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right || e.RowIndex < 0)
+            return;
+
+        if (!dgvFiles.Rows[e.RowIndex].Selected)
+        {
+            dgvFiles.ClearSelection();
+            dgvFiles.Rows[e.RowIndex].Selected = true;
+        }
+
+        dgvFiles.CurrentCell = dgvFiles.Rows[e.RowIndex].Cells[Math.Max(0, e.ColumnIndex)];
     }
 
     private static async Task<string> ReadPreviewAsync(string filePath)
@@ -994,6 +1075,228 @@ public sealed class MainForm : Form
         txtLog.ScrollToCaret();
     }
 
+    private void ConfigureFileContextMenu()
+    {
+        var menu = new ContextMenuStrip();
+        var previewItem = new ToolStripMenuItem("Preview");
+        var openItem = new ToolStripMenuItem("Open generated Lua");
+        var showItem = new ToolStripMenuItem("Show in output folder");
+        var copySourceItem = new ToolStripMenuItem("Copy source path");
+        var copyOutputItem = new ToolStripMenuItem("Copy output path");
+        var removeItem = new ToolStripMenuItem("Remove from list");
+
+        menu.Items.AddRange([
+            previewItem,
+            openItem,
+            showItem,
+            new ToolStripSeparator(),
+            copySourceItem,
+            copyOutputItem,
+            new ToolStripSeparator(),
+            removeItem
+        ]);
+
+        menu.Opening += (_, e) =>
+        {
+            InputFile? item = GetCurrentFile();
+            if (item is null)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            bool hasOutput = !string.IsNullOrWhiteSpace(item.OutputPath) && File.Exists(item.OutputPath);
+            previewItem.Enabled = hasOutput;
+            openItem.Enabled = hasOutput;
+            showItem.Enabled = hasOutput;
+            copyOutputItem.Enabled = !string.IsNullOrWhiteSpace(item.OutputPath);
+            removeItem.Enabled = _scanCancellation is null && _batchCancellation is null;
+        };
+
+        previewItem.Click += async (_, _) => await PreviewCurrentFileAsync();
+        openItem.Click += (_, _) =>
+        {
+            InputFile? item = GetCurrentFile();
+            if (!string.IsNullOrWhiteSpace(item?.OutputPath))
+                OpenPath(item.OutputPath);
+        };
+        showItem.Click += (_, _) =>
+        {
+            InputFile? item = GetCurrentFile();
+            if (!string.IsNullOrWhiteSpace(item?.OutputPath))
+                ShowInExplorer(item.OutputPath);
+        };
+        copySourceItem.Click += (_, _) =>
+        {
+            InputFile? item = GetCurrentFile();
+            if (!string.IsNullOrWhiteSpace(item?.SourcePath))
+                Clipboard.SetText(item.SourcePath);
+        };
+        copyOutputItem.Click += (_, _) =>
+        {
+            InputFile? item = GetCurrentFile();
+            if (!string.IsNullOrWhiteSpace(item?.OutputPath))
+                Clipboard.SetText(item.OutputPath);
+        };
+        removeItem.Click += (_, _) => RemoveSelectedFiles();
+
+        dgvFiles.ContextMenuStrip = menu;
+    }
+
+    private InputFile? GetCurrentFile() =>
+        dgvFiles.CurrentRow?.DataBoundItem as InputFile;
+
+    private async Task PreviewCurrentFileAsync()
+    {
+        InputFile? file = GetCurrentFile();
+        if (file is null ||
+            string.IsNullOrWhiteSpace(file.OutputPath) ||
+            !File.Exists(file.OutputPath))
+        {
+            txtPreview.Clear();
+            return;
+        }
+
+        try
+        {
+            txtPreview.Text = await ReadPreviewAsync(file.OutputPath);
+        }
+        catch (Exception ex)
+        {
+            txtPreview.Text = $"Unable to preview file:\r\n\r\n{ex.Message}";
+        }
+    }
+
+    private void RemoveSelectedFiles()
+    {
+        foreach (DataGridViewRow row in dgvFiles.SelectedRows.Cast<DataGridViewRow>().ToList())
+        {
+            if (row.DataBoundItem is InputFile item)
+                _files.Remove(item);
+        }
+    }
+
+    private void OpenOutputFolder()
+    {
+        string path = txtOutputFolder.Text.Trim();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            MessageBox.Show(this, "Select an output folder first.", "Output Folder", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(path);
+            OpenPath(path);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Unable to Open Folder", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static void OpenPath(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch
+        {
+            // Caller-facing actions remain non-fatal if Windows cannot open the target.
+        }
+    }
+
+    private static void ShowInExplorer(string filePath)
+    {
+        if (!File.Exists(filePath))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{filePath}\"",
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            string? directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrWhiteSpace(directory))
+                OpenPath(directory);
+        }
+    }
+
+    private void RestoreSettings()
+    {
+        AppSettings settings = _settingsService.Load();
+
+        txtOutputFolder.Text = settings.OutputFolder;
+        chkPreserveDirectories.Checked = settings.PreserveDirectories;
+        chkForceOverwrite.Checked = settings.ForceOverwrite;
+        chkSilentAssertions.Checked = settings.SilentAssertions;
+        chkIgnoreDebugInfo.Checked = settings.IgnoreDebugInfo;
+        chkMinimizeDiffs.Checked = settings.MinimizeDiffs;
+        chkUnrestrictedAscii.Checked = settings.UnrestrictedAscii;
+        txtExtensionFilter.Text = settings.ExtensionFilter;
+
+        Width = Math.Max(MinimumSize.Width, settings.WindowWidth);
+        Height = Math.Max(MinimumSize.Height, settings.WindowHeight);
+        if (settings.WindowMaximized)
+            WindowState = FormWindowState.Maximized;
+    }
+
+    private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (_scanCancellation is not null || _batchCancellation is not null)
+        {
+            DialogResult result = MessageBox.Show(
+                this,
+                "An operation is still running. Cancel it and exit?",
+                "Exit LuaJIT Decompiler v2 GUI",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result != DialogResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            _scanCancellation?.Cancel();
+            _batchCancellation?.Cancel();
+        }
+
+        Rectangle bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+
+        var settings = new AppSettings
+        {
+            OutputFolder = txtOutputFolder.Text.Trim(),
+            PreserveDirectories = chkPreserveDirectories.Checked,
+            ForceOverwrite = chkForceOverwrite.Checked,
+            SilentAssertions = chkSilentAssertions.Checked,
+            IgnoreDebugInfo = chkIgnoreDebugInfo.Checked,
+            MinimizeDiffs = chkMinimizeDiffs.Checked,
+            UnrestrictedAscii = chkUnrestrictedAscii.Checked,
+            ExtensionFilter = txtExtensionFilter.Text.Trim(),
+            WindowWidth = Math.Max(MinimumSize.Width, bounds.Width),
+            WindowHeight = Math.Max(MinimumSize.Height, bounds.Height),
+            WindowMaximized = WindowState == FormWindowState.Maximized
+        };
+
+        try
+        {
+            _settingsService.Save(settings);
+        }
+        catch
+        {
+            // Settings persistence must never prevent the app from closing.
+        }
+    }
+
     private void SetBusyState(bool busy)
     {
         btnAddFiles.Enabled = !busy;
@@ -1001,6 +1304,7 @@ public sealed class MainForm : Form
         btnRemove.Enabled = !busy;
         btnClear.Enabled = !busy;
         btnBrowseOutput.Enabled = !busy;
+        btnOpenOutput.Enabled = !busy;
         btnDecompile.Enabled = !busy;
         btnCancel.Enabled = busy;
 
