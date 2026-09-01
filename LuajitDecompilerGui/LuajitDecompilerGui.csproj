@@ -19,6 +19,7 @@
     <Copyright>Copyright © 2026 Mohammad HS</Copyright>
     <RepositoryUrl>https://github.com/mhsharif7/Luajit-Decompiler-v2-GUI</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('..\third_party\luajit-decompiler-v2.exe')">
