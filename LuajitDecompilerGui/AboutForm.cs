@@ -94,6 +94,15 @@ public sealed class AboutForm : Form
             Margin = new Padding(0, 8, 0, 0)
         }, 0, 5);
 
+        layout.Controls.Add(new Label
+        {
+            AutoSize = false,
+            Dock = DockStyle.Fill,
+            Text = "By mhsharif7",
+            ForeColor = TextPrimary,
+            Margin = new Padding(0, 8, 0, 0)
+        }, 0, 5);
+
         var close = new Button
         {
             Text = "Close",

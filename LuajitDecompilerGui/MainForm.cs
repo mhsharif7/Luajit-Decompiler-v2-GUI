@@ -4,16 +4,39 @@ using System.Reflection;
 using System.Text;
 using LuajitDecompilerGui.Models;
 using LuajitDecompilerGui.Services;
+using System.Runtime.InteropServices;
 
 namespace LuajitDecompilerGui;
 
 public sealed class MainForm : Form
 {
-    private static readonly Color AppBackground = Color.FromArgb(245, 247, 250);
-    private static readonly Color CardBackground = Color.White;
-    private static readonly Color BorderColor = Color.FromArgb(222, 226, 230);
-    private static readonly Color TextPrimary = Color.FromArgb(31, 41, 55);
-    private static readonly Color TextSecondary = Color.FromArgb(107, 114, 128);
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetWindowTheme(
+    IntPtr hWnd,
+    string? pszSubAppName,
+    string? pszSubIdList);
+
+    private enum PreferredAppMode
+    {
+        Default = 0,
+        AllowDark = 1,
+        ForceDark = 2,
+        ForceLight = 3
+    }
+
+    [DllImport("uxtheme.dll", EntryPoint = "#135")]
+    private static extern PreferredAppMode SetPreferredAppMode(PreferredAppMode appMode);
+
+    [DllImport("uxtheme.dll", EntryPoint = "#136")]
+    private static extern void FlushMenuThemes();
+
+    private bool _darkMode;
+
+    private Color AppBackground => _darkMode ? Color.FromArgb(17, 24, 39) : Color.FromArgb(245, 247, 250);
+    private Color CardBackground => _darkMode ? Color.FromArgb(31, 41, 55) : Color.White;
+    private Color BorderColor => _darkMode ? Color.FromArgb(55, 65, 81) : Color.FromArgb(222, 226, 230);
+    private Color TextPrimary => _darkMode ? Color.FromArgb(243, 244, 246) : Color.FromArgb(31, 41, 55);
+    private Color TextSecondary => _darkMode ? Color.FromArgb(156, 163, 175) : Color.FromArgb(107, 114, 128);
     private static readonly Color Accent = Color.FromArgb(0, 120, 212);
     private static readonly Color AccentHover = Color.FromArgb(0, 99, 177);
     private static readonly Color Success = Color.FromArgb(16, 124, 16);
@@ -42,7 +65,7 @@ public sealed class MainForm : Form
     private readonly TextBox txtExtensionFilter = new() { Width = 72 };
     private readonly TextBox txtPreview = new();
     private readonly TextBox txtLog = new();
-    private readonly ProgressBar progressBar = new();
+    private readonly ThemedProgressBar progressBar = new();
 
     private readonly Label lblProgress = new() { AutoSize = true, Text = "Ready" };
     private readonly Label lblOperation = new() { AutoSize = true, Text = "Ready" };
@@ -58,6 +81,7 @@ public sealed class MainForm : Form
     private readonly Button btnOpenOutput;
     private readonly Button btnDecompile;
     private readonly Button btnCancel;
+    private readonly Button btnTheme;
 
     private readonly ToolTip toolTip = new();
 
@@ -67,6 +91,8 @@ public sealed class MainForm : Form
         _decompiler = new DecompilerService(_outputPathService);
         _batchDecompiler = new BatchDecompilerService(_decompiler);
 
+        TrySetPreferredAppMode(false);
+
         btnAddFiles = CreateButton("Add files");
         btnAddFolder = CreateButton("Add folder");
         btnRemove = CreateButton("Remove");
@@ -75,6 +101,9 @@ public sealed class MainForm : Form
         btnOpenOutput = CreateButton("Open");
         btnDecompile = CreateButton("Decompile", primary: true);
         btnCancel = CreateButton("Cancel", danger: true);
+        btnTheme = CreateButton("☾ Dark");
+        btnTheme.Height = 28;
+        btnTheme.Padding = new Padding(8, 0, 8, 0);
         btnCancel.Enabled = false;
 
         Text = "LuaJIT Decompiler v2 GUI";
@@ -106,7 +135,10 @@ public sealed class MainForm : Form
         ConfigureFileContextMenu();
         RestoreSettings();
         FormClosing += MainForm_FormClosing;
+        Shown += (_, _) => ApplyNativeControlTheme();
 
+        ApplyTheme();
+        ApplyNativeControlTheme();
         UpdateDecompilerStatus();
         UpdateVersionLabel();
         UpdateFileCount();
@@ -221,12 +253,181 @@ public sealed class MainForm : Form
         };
         aboutLink.LinkClicked += (_, _) => new AboutForm().ShowDialog(this);
 
+        btnTheme.Margin = new Padding(14, 0, 0, 0);
+        btnTheme.Click += (_, _) =>
+        {
+            _darkMode = !_darkMode;
+            ApplyTheme();
+        };
+
         statusPanel.Controls.Add(aboutLink);
+        statusPanel.Controls.Add(btnTheme);
         statusPanel.Controls.Add(lblDecompiler);
         statusPanel.Controls.Add(lblVersion);
         header.Controls.Add(statusPanel, 1, 0);
 
         return header;
+    }
+
+    private void ApplyTheme()
+    {
+        SuspendLayout();
+
+        BackColor = AppBackground;
+        ForeColor = TextPrimary;
+        ApplyThemeRecursive(this, false);
+
+        foreach (TextBox box in new[] { txtOutputFolder, txtExtensionFilter, txtPreview, txtLog })
+        {
+            box.BackColor = _darkMode ? Color.FromArgb(17, 24, 39) : Color.White;
+            box.ForeColor = TextPrimary;
+        }
+
+        dgvFiles.BackgroundColor = CardBackground;
+        dgvFiles.GridColor = _darkMode ? Color.FromArgb(55, 65, 81) : Color.FromArgb(235, 237, 240);
+        dgvFiles.ColumnHeadersDefaultCellStyle.BackColor = _darkMode ? Color.FromArgb(31, 41, 55) : Color.FromArgb(248, 249, 251);
+        dgvFiles.ColumnHeadersDefaultCellStyle.ForeColor = TextSecondary;
+        dgvFiles.ColumnHeadersDefaultCellStyle.SelectionBackColor = dgvFiles.ColumnHeadersDefaultCellStyle.BackColor;
+        dgvFiles.ColumnHeadersDefaultCellStyle.SelectionForeColor = TextSecondary;
+        dgvFiles.DefaultCellStyle.BackColor = _darkMode ? Color.FromArgb(17, 24, 39) : Color.White;
+        dgvFiles.DefaultCellStyle.ForeColor = TextPrimary;
+        dgvFiles.DefaultCellStyle.SelectionBackColor = _darkMode ? Color.FromArgb(30, 64, 105) : Color.FromArgb(226, 239, 252);
+        dgvFiles.DefaultCellStyle.SelectionForeColor = TextPrimary;
+        dgvFiles.AlternatingRowsDefaultCellStyle.BackColor = _darkMode ? Color.FromArgb(24, 32, 46) : Color.FromArgb(252, 252, 253);
+        dgvFiles.AlternatingRowsDefaultCellStyle.ForeColor = TextPrimary;
+        dgvFiles.AlternatingRowsDefaultCellStyle.SelectionBackColor = dgvFiles.DefaultCellStyle.SelectionBackColor;
+        dgvFiles.AlternatingRowsDefaultCellStyle.SelectionForeColor = TextPrimary;
+
+        btnTheme.Text = _darkMode ? "☀ Light" : "☾ Dark";
+        foreach (Button button in new[] { btnAddFiles, btnAddFolder, btnRemove, btnClear, btnBrowseOutput, btnOpenOutput, btnTheme })
+            StyleButton(button);
+        StyleButton(btnDecompile, primary: true);
+        StyleButton(btnCancel, danger: true);
+
+        if (dgvFiles.ContextMenuStrip is { } menu)
+        {
+            menu.BackColor = CardBackground;
+            menu.ForeColor = TextPrimary;
+            menu.RenderMode = ToolStripRenderMode.System;
+            foreach (ToolStripItem item in menu.Items)
+            {
+                item.BackColor = CardBackground;
+                item.ForeColor = TextPrimary;
+            }
+        }
+
+        lblVersion.ForeColor = TextSecondary;
+        lblFileCount.ForeColor = TextSecondary;
+        lblProgress.ForeColor = TextSecondary;
+        UpdateDecompilerStatus();
+
+        TrySetPreferredAppMode(_darkMode);
+        ApplyNativeControlTheme();
+        progressBar.DarkMode = _darkMode;
+
+        dgvFiles.Invalidate();
+        Invalidate(true);
+        ResumeLayout(true);
+    }
+
+    private static void TrySetPreferredAppMode(bool darkMode)
+    {
+        try
+        {
+            SetPreferredAppMode(darkMode ? PreferredAppMode.AllowDark : PreferredAppMode.ForceLight);
+            FlushMenuThemes();
+        }
+        catch (DllNotFoundException)
+        {
+            // Older Windows build: fall back to per-control theming.
+        }
+        catch (EntryPointNotFoundException)
+        {
+            // Older Windows build: fall back to per-control theming.
+        }
+    }
+
+    private void ApplyNativeControlTheme()
+    {
+        string theme = _darkMode ? "DarkMode_Explorer" : "Explorer";
+
+        foreach (Control control in new Control[]
+        {
+            txtPreview, txtLog, txtOutputFolder, txtExtensionFilter
+        })
+        {
+            if (!control.IsHandleCreated)
+                _ = control.Handle;
+
+            SetWindowTheme(control.Handle, theme, null);
+            control.Invalidate();
+        }
+
+        progressBar.DarkMode = _darkMode;
+        progressBar.Invalidate();
+    }
+
+    private void ApplyThemeRecursive(Control parent, bool insideCard)
+    {
+        foreach (Control control in parent.Controls)
+        {
+            bool isCard = Equals(control.Tag, "Card");
+            bool cardContext = insideCard || isCard;
+
+            switch (control)
+            {
+                case SplitContainer split:
+                    split.BackColor = AppBackground;
+                    break;
+                case Panel:
+                    control.BackColor = cardContext ? CardBackground : AppBackground;
+                    break;
+                case Label label when label != lblDecompiler:
+                    label.ForeColor = TextPrimary;
+                    break;
+                case LinkLabel link:
+                    link.LinkColor = Accent;
+                    link.ActiveLinkColor = AccentHover;
+                    link.VisitedLinkColor = Accent;
+                    break;
+                case CheckBox checkBox:
+                    checkBox.BackColor = CardBackground;
+                    checkBox.ForeColor = TextPrimary;
+                    break;
+            }
+
+            if (control.HasChildren)
+                ApplyThemeRecursive(control, cardContext);
+        }
+    }
+
+    private void StyleButton(Button button, bool primary = false, bool danger = false)
+    {
+        Color background = primary
+            ? Accent
+            : danger
+                ? (_darkMode ? Color.FromArgb(69, 26, 26) : Color.FromArgb(253, 242, 242))
+                : (_darkMode ? Color.FromArgb(31, 41, 55) : Color.White);
+
+        button.BackColor = background;
+        button.ForeColor = primary
+            ? Color.White
+            : danger
+                ? (_darkMode ? Color.FromArgb(248, 113, 113) : Danger)
+                : TextPrimary;
+        button.FlatAppearance.BorderColor = primary
+            ? Accent
+            : danger
+                ? (_darkMode ? Color.FromArgb(127, 29, 29) : Color.FromArgb(239, 180, 174))
+                : (_darkMode ? Color.FromArgb(75, 85, 99) : Color.FromArgb(209, 213, 219));
+        button.FlatAppearance.MouseOverBackColor = primary
+            ? AccentHover
+            : danger
+                ? (_darkMode ? Color.FromArgb(90, 30, 30) : Color.FromArgb(252, 231, 229))
+                : (_darkMode ? Color.FromArgb(55, 65, 81) : Color.FromArgb(247, 248, 250));
+        button.FlatAppearance.MouseDownBackColor = primary
+            ? Color.FromArgb(0, 90, 158)
+            : (_darkMode ? Color.FromArgb(75, 85, 99) : Color.FromArgb(238, 240, 243));
     }
 
     private Control BuildToolbar()
@@ -597,13 +798,14 @@ public sealed class MainForm : Form
         return card;
     }
 
-    private static Panel CreateCard()
+    private Panel CreateCard()
     {
         var panel = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = CardBackground,
-            Padding = new Padding(1)
+            Padding = new Padding(1),
+            Tag = "Card"
         };
 
         panel.Paint += (_, e) =>
@@ -618,7 +820,7 @@ public sealed class MainForm : Form
         return panel;
     }
 
-    private static Button CreateButton(string text, bool primary = false, bool danger = false)
+    private Button CreateButton(string text, bool primary = false, bool danger = false)
     {
         Color background = primary ? Accent : danger ? Color.FromArgb(253, 242, 242) : Color.White;
         Color foreground = primary ? Color.White : danger ? Danger : TextPrimary;
@@ -1362,3 +1564,131 @@ public sealed class MainForm : Form
             : $"v{informationalVersion}";
     }
 }
+
+internal sealed class ThemedProgressBar : Control
+{
+    private int _minimum;
+    private int _maximum = 100;
+    private int _value;
+    private int _marqueeOffset;
+    private readonly System.Windows.Forms.Timer _marqueeTimer;
+    private ProgressBarStyle _style = ProgressBarStyle.Continuous;
+    private int _marqueeAnimationSpeed = 30;
+
+    public ThemedProgressBar()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        Height = 18;
+        _marqueeTimer = new System.Windows.Forms.Timer();
+        _marqueeTimer.Tick += (_, _) =>
+        {
+            _marqueeOffset = (_marqueeOffset + Math.Max(3, Width / 45)) % Math.Max(1, Width + 1);
+            Invalidate();
+        };
+    }
+
+    public bool DarkMode { get; set; }
+
+    public int Minimum
+    {
+        get => _minimum;
+        set { _minimum = value; if (_maximum < value) _maximum = value; Value = _value; Invalidate(); }
+    }
+
+    public int Maximum
+    {
+        get => _maximum;
+        set { _maximum = Math.Max(value, _minimum); Value = _value; Invalidate(); }
+    }
+
+    public int Value
+    {
+        get => _value;
+        set { _value = Math.Clamp(value, _minimum, _maximum); Invalidate(); }
+    }
+
+    public ProgressBarStyle Style
+    {
+        get => _style;
+        set
+        {
+            _style = value;
+            UpdateMarqueeTimer();
+            Invalidate();
+        }
+    }
+
+    public int MarqueeAnimationSpeed
+    {
+        get => _marqueeAnimationSpeed;
+        set
+        {
+            _marqueeAnimationSpeed = Math.Max(0, value);
+            UpdateMarqueeTimer();
+        }
+    }
+
+    private void UpdateMarqueeTimer()
+    {
+        if (_style == ProgressBarStyle.Marquee && _marqueeAnimationSpeed > 0)
+        {
+            _marqueeTimer.Interval = Math.Max(10, _marqueeAnimationSpeed);
+            _marqueeTimer.Start();
+        }
+        else
+        {
+            _marqueeTimer.Stop();
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+
+        Rectangle bounds = ClientRectangle;
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+            return;
+
+        Color track = DarkMode ? Color.FromArgb(17, 24, 39) : Color.FromArgb(229, 231, 235);
+        Color border = DarkMode ? Color.FromArgb(75, 85, 99) : Color.FromArgb(209, 213, 219);
+        Color fill = Color.FromArgb(0, 120, 212);
+
+        using var trackBrush = new SolidBrush(track);
+        using var fillBrush = new SolidBrush(fill);
+        using var borderPen = new Pen(border);
+
+        e.Graphics.FillRectangle(trackBrush, bounds);
+
+        Rectangle inner = Rectangle.Inflate(bounds, -1, -1);
+        if (inner.Width > 0 && inner.Height > 0)
+        {
+            if (_style == ProgressBarStyle.Marquee)
+            {
+                int blockWidth = Math.Max(36, inner.Width / 5);
+                int x = _marqueeOffset - blockWidth;
+                e.Graphics.FillRectangle(fillBrush, new Rectangle(x, inner.Y, blockWidth, inner.Height));
+                if (x + blockWidth < inner.Right)
+                    e.Graphics.FillRectangle(fillBrush, new Rectangle(x + inner.Width + blockWidth, inner.Y, blockWidth, inner.Height));
+            }
+            else
+            {
+                double range = Math.Max(1, _maximum - _minimum);
+                double ratio = Math.Clamp((_value - _minimum) / range, 0d, 1d);
+                int width = (int)Math.Round(inner.Width * ratio);
+                if (width > 0)
+                    e.Graphics.FillRectangle(fillBrush, new Rectangle(inner.X, inner.Y, width, inner.Height));
+            }
+        }
+
+        e.Graphics.DrawRectangle(borderPen, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _marqueeTimer.Dispose();
+        base.Dispose(disposing);
+    }
+}
+
