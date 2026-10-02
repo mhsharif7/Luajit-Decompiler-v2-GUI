@@ -2,7 +2,6 @@
 
 A modern Windows 10/11 C# WinForms front-end for [`luajit-decompiler-v2.exe`](https://github.com/marsinator358/luajit-decompiler-v2).
 
-Current version: **1.0.0**
 
 ## Features
 
