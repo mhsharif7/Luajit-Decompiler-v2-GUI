@@ -107,6 +107,14 @@ public sealed class MainForm : Form
         btnCancel.Enabled = false;
 
         Text = "LuaJIT Decompiler v2 GUI";
+
+        // Use the icon embedded in the application executable.
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(
+            Application.ExecutablePath
+        ) ?? SystemIcons.Application;
+
+        ShowIcon = true;
+
         Width = 1360;
         Height = 860;
         MinimumSize = new Size(1000, 680);
